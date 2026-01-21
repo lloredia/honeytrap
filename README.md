@@ -199,12 +199,41 @@ ls -la
 cat /etc/passwd
 ```
 
+
+## 🚀 Start the Lab using script
+```bash
+Start ClickHouse and Grafana:
+
+
+docker compose -f docker-compose.clickhouse.yml up -d
+```
+## Start the honeypot and collector:
+```bash
+./run-lab.sh
+```
+🔐 Connect to Honeypot
+
+```bash
+ssh root@localhost -p 2222
+
+```
+📊 View Dashboard
+
+Open Grafana in your browser:
+```
+http://localhost:13000
+
+```
+```
 ### View Captured Events
 
 ```bash
 cat events.jsonl | jq .
 ```
+
 ---
+
+## Demo
 
 <p align="center">
   <img src="assets/demo.gif" width="900" alt="Honeytrap animated demo" />
@@ -288,7 +317,7 @@ Options:
 
 ---
 
-## 📈 Metrics
+## 📈 Metrics & Dashboards
 
 Prometheus metrics exposed at `:9100/metrics`:
 
@@ -297,6 +326,10 @@ Prometheus metrics exposed at `:9100/metrics`:
 | `honeytrap_events_captured_total` | Counter | Total events by category |
 | `honeytrap_active_sessions` | Gauge | Current active sessions |
 | `honeytrap_auth_attempts_total` | Counter | Authentication attempts |
+
+### Dashboard Overview
+![Dashboard Overview](assets/image.png)
+
 
 ---
 
