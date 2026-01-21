@@ -1,0 +1,31 @@
+# Build artifacts
+/target
+
+# Dependencies (optional - some prefer to commit Cargo.lock)
+# Cargo.lock
+
+# SSH keys
+*.pem
+*.key
+ssh_host_key*
+
+# Environment files
+.env
+.env.local
+
+# Event logs (generated at runtime)
+events.jsonl
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+clickhouse_data/
+ssh-data/

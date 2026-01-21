@@ -1,0 +1,17 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: honeytrap-clickhouse
+    environment:
+      CLICKHOUSE_USER: honeytrap
+      CLICKHOUSE_PASSWORD: honeytrap
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "8123:8123"
+      - "19000:9000"
+    volumes:
+      - ./docker/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - clickhouse_data:/var/lib/clickhouse
+
+volumes:
+  clickhouse_data:
