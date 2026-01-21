@@ -224,6 +224,12 @@ Open Grafana in your browser:
 http://localhost:13000
 
 ```
+🔑 Login
+```
+Username: admin
+Password: admin
+
+```
 ```
 ### View Captured Events
 
