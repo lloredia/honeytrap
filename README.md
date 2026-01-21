@@ -220,12 +220,12 @@ ssh root@localhost -p 2222
 📊 View Dashboard
 
 Open Grafana in your browser:
-```
+```arduino
 http://localhost:13000
 
 ```
 🔑 Login
-```
+```pgsql
 Username: admin
 Password: admin
 
