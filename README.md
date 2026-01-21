@@ -28,6 +28,9 @@
 </p>
 
 ---
+<p align="center">
+  <img src="assets/demo.gif" width="900" alt="Honeytrap animated demo" />
+</p>
 
 ## 📖 Overview
 
