@@ -28,9 +28,7 @@
 </p>
 
 ---
-<p align="center">
-  <img src="assets/demo.gif" width="900" alt="Honeytrap animated demo" />
-</p>
+
 
 ## 📖 Overview
 
@@ -206,6 +204,12 @@ cat /etc/passwd
 ```bash
 cat events.jsonl | jq .
 ```
+---
+
+<p align="center">
+  <img src="assets/demo.gif" width="900" alt="Honeytrap animated demo" />
+</p>
+
 
 ---
 
@@ -352,5 +356,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 <p align="center">
   <img src="assets/honeytrap-logo-small.png" alt="HoneyTrap Logo" width="100">
   <br>
-  <strong>Made with 🦀 Rust and 🍯 by <a href="https://github.com/lloredia">lloredia</a></strong>
+  <strong>Made by <a href="https://github.com/lloredia">lloredia</a></strong>
 </p>
