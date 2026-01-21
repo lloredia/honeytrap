@@ -13,5 +13,20 @@ services:
       - ./docker/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - clickhouse_data:/var/lib/clickhouse
 
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: honeytrap-grafana
+    ports:
+      - "13000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    depends_on:
+      - clickhouse
+    volumes:
+      - grafana_data:/var/lib/grafana
+
 volumes:
   clickhouse_data:
+  grafana_data:
+
