@@ -230,7 +230,7 @@ Username: admin
 Password: admin
 
 ```
-```
+
 ### View Captured Events
 
 ```bash
