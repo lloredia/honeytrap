@@ -12,11 +12,8 @@ path = "src/main.rs"
 honeytrap-shared = { path = "../../shared" }
 
 tokio.workspace = true
-async-trait.workspace = true
-futures.workspace = true
-
 russh.workspace = true
-russh-keys.workspace = true
+rand = "0.10"
 
 serde.workspace = true
 serde_json.workspace = true
@@ -33,6 +30,3 @@ anyhow.workspace = true
 clap.workspace = true
 dashmap.workspace = true
 parking_lot.workspace = true
-sha2.workspace = true
-hex.workspace = true
-base64.workspace = true

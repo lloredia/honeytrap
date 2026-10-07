@@ -40,11 +40,10 @@ impl GeoIpService {
             Err(_) => return,
         };
 
-        if is_private_ip(&ip) {
-            return;
+        if !is_private_ip(&ip) {
+            // Stub: a MaxMind database is not bundled. `ip` is the lookup key.
+            let _ = ip;
         }
-
-        // TODO: Implement with MaxMind database
     }
 }
 

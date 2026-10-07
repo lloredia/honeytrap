@@ -13,8 +13,19 @@ ssh_host_key*
 .env
 .env.local
 
-# Event logs (generated at runtime)
+# Event logs (generated at runtime). The committed sample stays tracked.
 events.jsonl
+data/events/live.jsonl
+collector.log
+
+# Host keys generated on first run
+data/keys/
+
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
 
 # IDE
 .idea/

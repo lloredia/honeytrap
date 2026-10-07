@@ -1,37 +1,208 @@
-version: '3.8'
+# One stack: honeypot, collector, ClickHouse, Prometheus, Grafana.
+#
+# Only port 2222 is published on all interfaces. Metrics, Grafana, Prometheus,
+# and ClickHouse are bound to 127.0.0.1. Services share the `honeytrap` network.
+# Block outbound traffic from this host at the VM or VPC firewall. The Grafana
+# image installs the ClickHouse plugin at build time, so runtime egress is not
+# required for the dashboard.
+
+x-hardening: &hardening
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+  networks:
+    - honeytrap
+
+# Distroless honeypot and collector already run as uid 65532.
+x-drop-caps: &drop-caps
+  cap_drop:
+    - ALL
 
 services:
+  # Named volumes are root-owned. This one-shot creates the data dirs for uid 65532.
+  data-init:
+    image: busybox:1.36.1
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /data/events /data/keys && chown -R 65532:65532 /data"]
+    volumes:
+      - honeytrap-data:/data
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+    networks:
+      - honeytrap
+
   honeypot-ssh:
+    <<: [*hardening, *drop-caps]
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
     build:
       context: .
       dockerfile: docker/Dockerfile
+      target: honeypot
+    image: honeytrap-ssh:local
     container_name: honeytrap-ssh
     ports:
-      - "2222:2222"
-      - "9100:9100"
+      - "${SSH_PORT:-2222}:2222"
+      - "127.0.0.1:9100:9100"
     environment:
-      - RUST_LOG=info
+      RUST_LOG: ${RUST_LOG:-info}
     volumes:
-      - ssh-data:/data
-    restart: unless-stopped
+      - honeytrap-data:/data
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    pids_limit: 128
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+
+  collector:
+    <<: [*hardening, *drop-caps]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: collector
+    image: honeytrap-collector:local
+    container_name: honeytrap-collector
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
+      clickhouse:
+        condition: service_started
+      honeypot-ssh:
+        condition: service_started
+    ports:
+      - "127.0.0.1:9108:9108"
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?set CLICKHOUSE_USER in .env}
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-honeytrap}
+    command:
+      - --events-file
+      - /data/events/ssh.jsonl
+      - --clickhouse-url
+      - http://clickhouse:8123
+      - --clickhouse-user
+      - ${CLICKHOUSE_USER:?set CLICKHOUSE_USER in .env}
+      - --database
+      - ${CLICKHOUSE_DB:-honeytrap}
+      - --metrics-addr
+      - 0.0.0.0:9108
+    volumes:
+      - honeytrap-data:/data
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    pids_limit: 64
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+
+  # The official entrypoint starts as root, writes users.d, then drops to
+  # the clickhouse user. Dropping every capability breaks that handoff,
+  # so this service keeps the default capability set and stays unpublished.
+  clickhouse:
+    <<: *hardening
+    image: clickhouse/clickhouse-server:24.8
+    container_name: honeytrap-clickhouse
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?set CLICKHOUSE_USER in .env}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-honeytrap}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9000:9000"
+    volumes:
+      - ./docker/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - clickhouse-data:/var/lib/clickhouse
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /var/log/clickhouse-server:size=32m,mode=0755
+      - /etc/clickhouse-server/users.d:size=1m,mode=0755
+    pids_limit: 256
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1G
 
   prometheus:
-    image: prom/prometheus:v2.47.0
+    <<: [*hardening, *drop-caps]
+    image: prom/prometheus:v2.55.1
     container_name: honeytrap-prometheus
+    depends_on:
+      - honeypot-ssh
+      - collector
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.listen-address=0.0.0.0:9090
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    restart: unless-stopped
+      - prometheus-data:/prometheus
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    pids_limit: 64
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
 
   grafana:
-    image: grafana/grafana:10.2.0
+    <<: [*hardening, *drop-caps]
+    build:
+      context: .
+      dockerfile: docker/grafana.Dockerfile
+    image: honeytrap-grafana:local
     container_name: honeytrap-grafana
+    depends_on:
+      - clickhouse
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    restart: unless-stopped
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?set GRAFANA_ADMIN_USER in .env}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_PATHS_PLUGINS: /usr/share/grafana/plugins
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?set CLICKHOUSE_USER in .env}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-honeytrap}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./configs/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./configs/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+      - /run:size=8m,mode=0755
+    pids_limit: 128
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
+networks:
+  honeytrap:
+    name: honeytrap
 
 volumes:
-  ssh-data:
+  honeytrap-data:
+  clickhouse-data:
+  prometheus-data:
+  grafana-data:

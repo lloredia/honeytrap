@@ -1,6 +1,7 @@
 //! SSH Session State
 
 use chrono::{DateTime, Utc};
+use russh::ChannelId;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -15,10 +16,9 @@ pub struct SessionState {
     pub username: Option<String>,
     pub auth_attempts: Vec<AuthAttempt>,
     pub commands: Vec<CommandExecution>,
-    pub cwd: String,
     pub env: HashMap<String, String>,
     pub authenticated: bool,
-    pub channels: HashMap<u32, ChannelState>,
+    pub channels: HashMap<ChannelId, ChannelState>,
 }
 
 impl SessionState {
@@ -31,19 +31,27 @@ impl SessionState {
             username: None,
             auth_attempts: Vec::new(),
             commands: Vec::new(),
-            cwd: "/root".to_string(),
             env: default_env(),
             authenticated: false,
             channels: HashMap::new(),
         }
     }
 
-    pub fn record_auth_attempt(&mut self, attempt: AuthAttempt) {
-        self.auth_attempts.push(attempt);
+    pub fn record_auth_attempt(&mut self, attempt: AuthAttempt, max: usize) {
+        if self.auth_attempts.len() < max {
+            self.auth_attempts.push(attempt);
+        }
     }
 
-    pub fn record_command(&mut self, command: CommandExecution) {
-        self.commands.push(command);
+    pub fn record_command(&mut self, command: CommandExecution, max: usize) {
+        if self.commands.len() < max {
+            self.commands.push(command);
+        }
+    }
+
+    pub fn session_expired(&self, timeout_secs: u64) -> bool {
+        (Utc::now() - self.started_at).num_seconds()
+            >= i64::try_from(timeout_secs).unwrap_or(i64::MAX)
     }
 
     pub fn authenticate(&mut self, username: String) {
@@ -132,19 +140,19 @@ impl std::fmt::Display for AuthType {
 
 #[derive(Debug)]
 pub struct ChannelState {
-    pub channel_id: u32,
     pub pty_requested: bool,
     pub shell_active: bool,
     pub command_buffer: String,
+    pub line_overflow: bool,
 }
 
 impl ChannelState {
-    pub fn new(channel_id: u32) -> Self {
+    pub fn new() -> Self {
         Self {
-            channel_id,
             pty_requested: false,
             shell_active: false,
             command_buffer: String::new(),
+            line_overflow: false,
         }
     }
 }

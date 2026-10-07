@@ -1,4 +1,8 @@
-//! Fake Shell Implementation
+//! Emulated shell.
+//!
+//! Every command is answered from in-memory fixtures. This module must never
+//! spawn a process, open a network socket, or write the attacker's command
+//! into a real shell. See `shell_sources_do_not_spawn_processes`.
 
 use std::collections::HashMap;
 
@@ -238,3 +242,74 @@ Swap:       2097148           0     2097148";
 const FAKE_DF: &str = "Filesystem     1K-blocks    Used Available Use% Mounted on
 /dev/sda1       41284928 5678901  33487432  15% /
 tmpfs            4063584       0   4063584   0% /dev/shm";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    #[test]
+    fn uname_a_is_a_fixed_banner() {
+        let mut shell = FakeShell::new();
+        let out = shell.execute("uname -a");
+        assert_eq!(
+            out,
+            "Linux server 5.15.0-91-generic #101-Ubuntu SMP x86_64 GNU/Linux"
+        );
+        assert_eq!(shell.execute("uname"), "Linux");
+    }
+
+    #[test]
+    fn cat_passwd_is_a_fixture() {
+        let mut shell = FakeShell::new();
+        let out = shell.execute("cat /etc/passwd");
+        assert!(out.contains("root:x:0:0:root:/root:/bin/bash"));
+        assert!(out.contains("www-data"));
+        assert!(!out.contains("honeytrap"));
+    }
+
+    #[test]
+    fn wget_and_curl_never_fetch() {
+        let mut shell = FakeShell::new();
+        let wget = shell.execute("wget http://203.0.113.10/xmrig");
+        assert!(wget.contains("unable to resolve"));
+        assert!(!wget.contains("saved"));
+        let curl = shell.execute("curl https://example.com/setup.sh");
+        assert!(curl.contains("Could not resolve host"));
+    }
+
+    #[test]
+    fn metacharacters_are_not_interpreted() {
+        let mut shell = FakeShell::new();
+        let out = shell.execute("uname; id");
+        assert!(out.contains("command not found"));
+        assert!(!out.contains("uid="));
+        let echoed = shell.execute("echo $(id)");
+        assert_eq!(echoed, "$(id)");
+    }
+
+    #[test]
+    fn shell_sources_do_not_spawn_processes() {
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        for entry in fs::read_dir(&src).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+                continue;
+            }
+            let text = fs::read_to_string(&path).unwrap();
+            let banned = [
+                format!("{}{}", "std::", "process"),
+                format!("{}{}", "tokio::", "process"),
+                format!("{}{}", "Command::", "new"),
+            ];
+            for needle in &banned {
+                assert!(
+                    !text.contains(needle),
+                    "{} contains {needle}",
+                    path.display()
+                );
+            }
+        }
+    }
+}

@@ -1,0 +1,15 @@
+target
+.git
+.env
+.env.*
+!.env.example
+data/keys
+*.jsonl
+!data/events/ssh.jsonl
+assets
+*.md
+.github
+tools
+configs
+docker-compose.yml
+run-lab.sh
