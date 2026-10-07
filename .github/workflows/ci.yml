@@ -80,7 +80,7 @@ jobs:
           cache-from: type=gha,scope=honeytrap
           cache-to: type=gha,scope=honeytrap,mode=max
       - name: Scan honeypot
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: honeytrap-ssh:ci
           format: table
@@ -89,7 +89,7 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
       - name: Scan collector
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: honeytrap-collector:ci
           format: table
