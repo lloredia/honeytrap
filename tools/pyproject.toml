@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "honeytrap-tools"
+version = "0.1.0"
+description = "HoneyTrap helpers: synthetic events and SentinelForge IOC push"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.32,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.8",
+]
+
+[tool.setuptools]
+py-modules = ["honeytrap_integration", "honeytrap_test_generator"]
+
+[project.scripts]
+honeytrap-integration = "honeytrap_integration:main"
+honeytrap-test-generator = "honeytrap_test_generator:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

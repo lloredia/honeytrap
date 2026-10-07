@@ -1,26 +1,46 @@
 #!/usr/bin/env bash
-set -e
+# Run the collector and SSH honeypot on the host (no containers).
+# The host key under data/keys is created on first start and reused after that.
+# This script does not remove the key from your SSH known_hosts file.
+set -euo pipefail
 
-echo "🚀 Starting HoneyTrap Lab..."
+cd "$(dirname "$0")"
 
-echo "▶ Starting Collector..."
+if [[ ! -f .env ]]; then
+  echo "Missing .env. Run: cp .env.example .env" >&2
+  exit 1
+fi
+
+set -a
+# shellcheck disable=SC1091
+source .env
+set +a
+
+if [[ -z "${CLICKHOUSE_PASSWORD:-}" || "${CLICKHOUSE_PASSWORD}" == "change-me" ]]; then
+  echo "Set CLICKHOUSE_PASSWORD in .env before starting the collector." >&2
+  exit 1
+fi
+
+mkdir -p data/events data/keys
+
+export CLICKHOUSE_PASSWORD
+export CLICKHOUSE_USER="${CLICKHOUSE_USER:-honeytrap}"
+export CLICKHOUSE_URL="${CLICKHOUSE_URL:-http://127.0.0.1:8123}"
+export CLICKHOUSE_DB="${CLICKHOUSE_DB:-honeytrap}"
+
+echo "Starting collector (password is taken from CLICKHOUSE_PASSWORD, not the command line)..."
 nohup cargo run -p honeytrap-collector -- \
-  --events-file ./events.jsonl \
-  --clickhouse-url http://localhost:8123 \
-  --clickhouse-user honeytrap \
-  --clickhouse-password honeytrap \
-  --database honeytrap \
-  --table events_raw \
-  --metrics-addr 0.0.0.0:9110 \
+  --events-file ./data/events/live.jsonl \
+  --clickhouse-url "${CLICKHOUSE_URL}" \
+  --clickhouse-user "${CLICKHOUSE_USER}" \
+  --database "${CLICKHOUSE_DB}" \
+  --metrics-addr 127.0.0.1:9108 \
   > collector.log 2>&1 &
 
-sleep 2
-
-echo "🔐 regenerating honeypot host key ===▶ SSH Honeypot..."
-ssh-keygen -R "[localhost]:2222" >/dev/null 2>&1 &
-
-
-sleep 5
-
-echo "▶ Starting SSH Honeypot..."
-cargo run -p honeytrap-ssh -- --port 2222
+echo "Starting SSH honeypot on port ${SSH_PORT:-2222}."
+echo "Host key: data/keys/ssh_host_ed25519 (kept across restarts)."
+cargo run -p honeytrap-ssh -- \
+  --host 0.0.0.0 \
+  --port "${SSH_PORT:-2222}" \
+  --host-key ./data/keys/ssh_host_ed25519 \
+  --events-file ./data/events/live.jsonl

@@ -1,0 +1,9 @@
+title = "HoneyTrap gitleaks config"
+
+[allowlist]
+description = "Placeholders and synthetic sample events"
+paths = [
+    '''\.env\.example''',
+    '''data/events/ssh\.jsonl''',
+    '''tools/honeytrap_test_generator\.py''',
+]

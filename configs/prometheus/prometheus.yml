@@ -1,7 +1,11 @@
 global:
   scrape_interval: 15s
+  scrape_timeout: 10s
 
 scrape_configs:
-  - job_name: 'honeytrap-ssh'
+  - job_name: honeytrap-ssh
     static_configs:
-      - targets: ['honeypot-ssh:9100']
+      - targets: ["honeypot-ssh:9100"]
+  - job_name: honeytrap-collector
+    static_configs:
+      - targets: ["collector:9108"]
